@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Vjik\UnpackingVsForeachBench;
 
+use PhpBench\Benchmark\Metadata\Annotations\BeforeMethods;
+use SplFixedArray;
+
 /**
  * @Iterations(10)
  * @Revs(1000)
@@ -11,13 +14,16 @@ namespace Vjik\UnpackingVsForeachBench;
 abstract class ArrayBench
 {
     private array $data = [];
+    private array $from = [];
+    private SplFixedArray $fromSpl;
+    private $to;
 
     public function setData(): void
     {
-        $this->data = [
-            $this->generateArray($this->getCountElementsFrom()),
-            $this->generateArray($this->getCountElementsTo()),
-        ];
+        $this->from = $this->generateArray($this->getCountElementsFrom());
+        $this->fromSpl = SplFixedArray::fromArray($this->from, true);
+        $this->data = $this->generateArray($this->getCountElementsTo());
+        $this->to = $this->from;
     }
 
     abstract protected function getCountElementsFrom(): int;
@@ -38,7 +44,8 @@ abstract class ArrayBench
      */
     public function benchUnpacking(): void
     {
-        $columns = [...$this->data[0], ...$this->data[1]];
+        $this->to = $this->from;
+        $this->to = [...$this->to, ...$this->data];
     }
 
     /**
@@ -46,9 +53,32 @@ abstract class ArrayBench
      */
     public function benchForeach(): void
     {
-        $columns = $this->data[0];
-        foreach ($this->data[1] as $column) {
-            $columns[] = $column;
+        $this->to = $this->from;
+        foreach ($this->data as $column) {
+            $this->to[] = $column;
+        }
+    }
+
+    /**
+     * @BeforeMethods("setData")
+     */
+    public function benchArrayMerge(): void
+    {
+        $this->to = $this->from;
+        $this->to = \array_merge($this->to, $this->data);
+    }
+
+    /**
+     * @BeforeMethods("setData")
+     */
+    public function benchFixedArray(): void
+    {
+        $this->to = clone $this->fromSpl;
+
+        $oldSize = count($this->to);
+        $this->to->setSize($oldSize + count($this->data));
+        foreach ($this->data as $column) {
+            $this->to[$oldSize++] = $column;
         }
     }
 }
